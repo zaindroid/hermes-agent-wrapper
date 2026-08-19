@@ -5,6 +5,12 @@ env:
     required: true
   HERMES4_MODEL_NAME:
     required: true
+  HONCHO_BASE_URL:
+    required: true   # internal Coolify network address of the honcho api
+                       # service, e.g. http://api-<service-uuid>:8000 -- only
+                       # used to seed honcho.json on first boot (not a secret,
+                       # but has no sane default since the service uuid is
+                       # generated at honcho-deploy time)
   HERMES_DASHBOARD_BASIC_AUTH_USERNAME:
     required: true
   HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:

@@ -27,3 +27,14 @@ mcp_servers:
     url: "https://mcp.zaindroid.me/mcp"
     headers:
       Authorization: "Bearer ${MCP_TOKEN}"
+
+memory:
+  provider: honcho
+
+tools:
+  tool_search:
+    # The local qwen3-agent model doesn't reliably follow the deferred
+    # tool_call(name=..., arguments=...) wrapper indirection -- it drops
+    # the required "name" field and loops. Disabling deferral exposes the
+    # honcho memory tool (and everything else) directly instead.
+    enabled: "off"

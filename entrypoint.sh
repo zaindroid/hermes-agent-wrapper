@@ -6,6 +6,11 @@ if [ ! -f /opt/data/config.yaml ]; then
   envsubst '${HERMES4_BASE_URL} ${HERMES4_MODEL_NAME}' < /opt/seed/config.yaml.tmpl > /opt/data/config.yaml
 fi
 
+if [ ! -f /opt/data/honcho.json ] && [ -n "${HONCHO_BASE_URL:-}" ]; then
+  echo "[bootstrap] seeding honcho.json (first boot)"
+  printf '{"baseUrl": "%s"}' "$HONCHO_BASE_URL" > /opt/data/honcho.json
+fi
+
 # Real bug found live: a hand-written minimal config.yaml (no
 # _config_version, none of the other scaffold fields a real `hermes
 # setup` run would add) resolves fine through `hermes config get` but
