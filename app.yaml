@@ -8,7 +8,9 @@ env:
   HERMES_DASHBOARD_BASIC_AUTH_USERNAME:
     required: true
   HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:
-    generate: hex
+    required: true    # NOT generate:hex -- a human needs to actually know this
+                       # value to log in; generate:hex is for secrets only the
+                       # app itself ever reads.
   HERMES_DASHBOARD_BASIC_AUTH_SECRET:
     generate: hex
   HERMES_DASHBOARD_PUBLIC_URL:
