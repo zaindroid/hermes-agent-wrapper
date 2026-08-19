@@ -1,0 +1,23 @@
+providers:
+  qwen-rtx5090:
+    type: "openai"
+    base_url: "http://100.124.93.99:11434/v1"
+    api_key: "ollama"
+    models:
+      - name: "qwen3-agent:latest"
+  hermes4-jetson:
+    type: "openai"
+    base_url: "${HERMES4_BASE_URL}"
+    api_key: "ollama"
+    models:
+      - name: "${HERMES4_MODEL_NAME}"
+
+model:
+  provider: qwen-rtx5090
+  model: "qwen3-agent:latest"
+
+mcp_servers:
+  zorc:
+    url: "https://mcp.zaindroid.me/mcp"
+    headers:
+      Authorization: "Bearer ${MCP_TOKEN}"

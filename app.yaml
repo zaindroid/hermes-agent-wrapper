@@ -1,0 +1,18 @@
+env:
+  MCP_TOKEN:
+    required: true
+  HERMES4_BASE_URL:
+    required: true
+  HERMES4_MODEL_NAME:
+    required: true
+  HERMES_DASHBOARD_BASIC_AUTH_USERNAME:
+    required: true
+  HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:
+    generate: hex
+  HERMES_DASHBOARD_BASIC_AUTH_SECRET:
+    generate: hex
+  HERMES_DASHBOARD_PUBLIC_URL:
+    required: true
+database: false
+persistent_storage:
+  mount_path: /opt/data
