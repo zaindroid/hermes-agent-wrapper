@@ -6,6 +6,15 @@ if [ ! -f /opt/data/config.yaml ]; then
   envsubst '${HERMES4_BASE_URL} ${HERMES4_MODEL_NAME}' < /opt/seed/config.yaml.tmpl > /opt/data/config.yaml
 fi
 
+# Real bug found live: a hand-written minimal config.yaml (no
+# _config_version, none of the other scaffold fields a real `hermes
+# setup` run would add) resolves fine through `hermes config get` but
+# silently sends an EMPTY model field on real chat requests (HTTP 400
+# "model is required") -- config migrate fills in the missing schema and
+# fixes it. Safe to run every boot: no-ops (exits 0, no prompt hang) once
+# already migrated.
+hermes config migrate
+
 nginx -g "daemon off;" &
 
 # HERMES_DASHBOARD=1 alone does NOT start the dashboard as part of
