@@ -17,6 +17,22 @@ hermes config migrate
 
 nginx -g "daemon off;" &
 
+# Register this gateway as its own "peer" over the loopback-only API
+# server, so `hermes peer dm local/<bot>` can deliver a message into any
+# local bot's canonical Bot Chat -- the supported mechanism for bot-to-bot
+# messaging (peer dm works identically same-host or cross-host; there is
+# no separate "local" verb). `peer add` is an upsert (aliased `set`), so
+# safe to run unconditionally on every boot -- but the API server needs a
+# few seconds to actually start listening first.
+(
+  for _ in $(seq 1 15); do
+    curl -s -o /dev/null -m 2 "http://127.0.0.1:${API_SERVER_PORT:-8642}/health" && break
+    sleep 2
+  done
+  hermes peer add local --url "http://127.0.0.1:${API_SERVER_PORT:-8642}" --key "$API_SERVER_KEY" \
+    --note "self -- same-gateway bot-to-bot delivery" || true
+) &
+
 # HERMES_DASHBOARD=1 alone does NOT start the dashboard as part of
 # `gateway run` -- real bug found live: port 9119 never opened, `gateway
 # run` only starts messaging/cron. The dashboard is its own process;

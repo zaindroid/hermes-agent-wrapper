@@ -16,6 +16,16 @@ ENV HERMES_DASHBOARD=1
 ENV HERMES_DASHBOARD_HOST=0.0.0.0
 ENV HERMES_DASHBOARD_PORT=9119
 
+# API server: loopback-ONLY (127.0.0.1), never exposed via nginx/tunnel --
+# its sole purpose is letting `hermes peer dm local/<bot>` deliver into
+# another local bot's canonical Bot Chat (see entrypoint.sh's peer
+# registration). API_SERVER_KEY is generate:hex in app.yaml -- the
+# entrypoint reads it from its own process env to register the peer, no
+# human ever needs to see or type it.
+ENV API_SERVER_ENABLED=true
+ENV API_SERVER_HOST=127.0.0.1
+ENV API_SERVER_PORT=8642
+
 COPY nginx.conf /etc/nginx/conf.d/hermes.conf
 COPY config.yaml.tmpl /opt/seed/config.yaml.tmpl
 COPY entrypoint.sh /entrypoint.sh

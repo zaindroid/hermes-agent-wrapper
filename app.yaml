@@ -15,6 +15,10 @@ env:
     generate: hex
   HERMES_DASHBOARD_PUBLIC_URL:
     required: true
+  API_SERVER_KEY:
+    generate: hex   # loopback-only local API server, for bot-to-bot peer
+                     # delivery -- never surfaced to a human, entrypoint
+                     # reads it from its own env to self-register the peer
 database: false
 persistent_storage:
   mount_path: /opt/data
