@@ -4,7 +4,12 @@ providers:
     base_url: "http://100.124.93.99:11434/v1"
     api_key: "ollama"
     models:
+      # qwen2.5-coder:7b-instruct deliberately not listed here -- Ollama
+      # reports only 32,768 context for it, below Hermes Agent's hard
+      # 64K-minimum floor (confirmed live), so it can never actually be
+      # selected as a Hermes model regardless of being declared.
       - name: "qwen3-agent:latest"
+      - name: "qwen3:30b"
   hermes4-jetson:
     type: "openai"
     base_url: "${HERMES4_BASE_URL}"
@@ -14,7 +19,7 @@ providers:
 
 model:
   provider: qwen-rtx5090
-  model: "qwen3-agent:latest"
+  default: "qwen3-agent:latest"
 
 mcp_servers:
   zorc:
