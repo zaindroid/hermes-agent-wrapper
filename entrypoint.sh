@@ -20,6 +20,18 @@ cp -f /opt/seed/dashboard-themes/*.yaml /opt/data/dashboard-themes/ 2>/dev/null 
 
 mkdir -p /opt/data/bots-ui-avatars
 
+# Bots UI has no auth of its own and nginx doesn't otherwise gate it (only
+# Hermes' own dashboard on / does, via its internal session-cookie system --
+# not something worth re-implementing here). Real gap found live: /bots and
+# /bots-api were reachable completely unauthenticated. Reuses the same
+# HERMES_DASHBOARD_BASIC_AUTH_* pair the user already has for the dashboard
+# rather than inventing a second credential; regenerated every boot so a
+# rotated password takes effect on restart.
+if [ -n "${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}" ] && [ -n "${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}" ]; then
+  printf '%s:%s\n' "$HERMES_DASHBOARD_BASIC_AUTH_USERNAME" \
+    "$(openssl passwd -apr1 "$HERMES_DASHBOARD_BASIC_AUTH_PASSWORD")" > /etc/nginx/.htpasswd-bots
+fi
+
 # Real bug found live: a hand-written minimal config.yaml (no
 # _config_version, none of the other scaffold fields a real `hermes
 # setup` run would add) resolves fine through `hermes config get` but
