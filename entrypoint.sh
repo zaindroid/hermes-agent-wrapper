@@ -75,4 +75,13 @@ hermes dashboard --host 0.0.0.0 --port 9119 --no-open &
 /opt/hermes/.venv/bin/uvicorn main:app \
   --host 127.0.0.1 --port "${BOTS_UI_PORT:-8643}" --app-dir /opt/bots-ui/backend &
 
+# Bot-supervisor MCP tools (list_bots/message_bot) -- a separate process
+# from the Bots UI backend above, not mounted onto it: mcp's
+# streamable_http_app() needs its own lifespan to start its session
+# manager's task group, which doesn't cascade through a Starlette Mount()
+# onto an existing FastAPI app (confirmed live -- every request 500'd with
+# "Task group is not initialized" when mounted). Talks to the Bots UI
+# backend over plain HTTP instead of importing it in-process, same reason.
+(cd /opt/bots-ui/backend && /opt/hermes/.venv/bin/python supervisor_mcp.py) &
+
 exec hermes gateway run
