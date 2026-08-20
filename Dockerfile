@@ -28,6 +28,7 @@ ENV API_SERVER_PORT=8642
 
 COPY nginx.conf /etc/nginx/conf.d/hermes.conf
 COPY config.yaml.tmpl /opt/seed/config.yaml.tmpl
+COPY dashboard-themes/ /opt/seed/dashboard-themes/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

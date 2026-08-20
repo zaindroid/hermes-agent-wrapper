@@ -11,6 +11,13 @@ if [ ! -f /opt/data/honcho.json ] && [ -n "${HONCHO_BASE_URL:-}" ]; then
   printf '{"baseUrl": "%s"}' "$HONCHO_BASE_URL" > /opt/data/honcho.json
 fi
 
+# Custom dashboard themes are static definitions, not user-mutable state
+# like config.yaml -- sync them from the image every boot so a theme
+# tweak shipped in a new image actually lands on redeploy. The active
+# theme SELECTION lives in config.yaml (dashboard.theme), untouched here.
+mkdir -p /opt/data/dashboard-themes
+cp -f /opt/seed/dashboard-themes/*.yaml /opt/data/dashboard-themes/ 2>/dev/null || true
+
 # Real bug found live: a hand-written minimal config.yaml (no
 # _config_version, none of the other scaffold fields a real `hermes
 # setup` run would add) resolves fine through `hermes config get` but
