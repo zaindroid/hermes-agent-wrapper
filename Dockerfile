@@ -26,6 +26,14 @@ ENV API_SERVER_ENABLED=true
 ENV API_SERVER_HOST=127.0.0.1
 ENV API_SERVER_PORT=8642
 
+# Bots UI: a companion multi-bot management app the web dashboard doesn't
+# ship natively (see bots-ui/backend/main.py for the full rationale). Runs
+# as its own loopback-only process, reusing FastAPI/uvicorn/httpx already
+# present in Hermes' own venv -- no new Python deps to install.
+ENV BOTS_UI_PORT=8643
+COPY bots-ui/backend/ /opt/bots-ui/backend/
+COPY bots-ui/frontend/ /opt/bots-ui/frontend/
+
 COPY nginx.conf /etc/nginx/conf.d/hermes.conf
 COPY config.yaml.tmpl /opt/seed/config.yaml.tmpl
 COPY dashboard-themes/ /opt/seed/dashboard-themes/

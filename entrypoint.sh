@@ -18,6 +18,8 @@ fi
 mkdir -p /opt/data/dashboard-themes
 cp -f /opt/seed/dashboard-themes/*.yaml /opt/data/dashboard-themes/ 2>/dev/null || true
 
+mkdir -p /opt/data/bots-ui-avatars
+
 # Real bug found live: a hand-written minimal config.yaml (no
 # _config_version, none of the other scaffold fields a real `hermes
 # setup` run would add) resolves fine through `hermes config get` but
@@ -51,5 +53,14 @@ nginx -g "daemon off;" &
 # HERMES_DASHBOARD_HOST/PORT (set in the Dockerfile) configure it once it
 # is actually launched.
 hermes dashboard --host 0.0.0.0 --port 9119 --no-open &
+
+# Bots UI backend: talks to the dashboard (9119, session-cookie login) and
+# the api_server (8642, Bearer key) once they're up -- both env vars it
+# needs (HERMES_DASHBOARD_BASIC_AUTH_*, API_SERVER_KEY) are already set for
+# the peer-registration step above. Started in the background like the
+# other processes; its own requests retry/lazily-login rather than needing
+# a startup barrier here.
+/opt/hermes/.venv/bin/uvicorn main:app \
+  --host 127.0.0.1 --port "${BOTS_UI_PORT:-8643}" --app-dir /opt/bots-ui/backend &
 
 exec hermes gateway run
