@@ -1,0 +1,53 @@
+name: grok-light
+label: Grok Light
+description: Minimal white/near-black light mode -- the light counterpart to Grok, no color noise
+
+palette:
+  background: "#ffffff"
+  midground: "#171717"
+  foreground:
+    hex: "#000000"
+    alpha: 0
+  warmGlow: "rgba(0, 0, 0, 0.04)"
+  noiseOpacity: 0
+
+typography:
+  fontSans: '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  fontMono: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
+  fontUrl: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  baseSize: "15px"
+  lineHeight: "1.6"
+  letterSpacing: "-0.006em"
+
+layout:
+  radius: "0.75rem"
+  density: comfortable
+
+layoutVariant: standard
+
+colorOverrides:
+  card: "#fafafa"
+  cardForeground: "#171717"
+  popover: "#ffffff"
+  popoverForeground: "#171717"
+  primary: "#171717"
+  primaryForeground: "#ffffff"
+  secondary: "#f2f2f2"
+  secondaryForeground: "#171717"
+  muted: "#f5f5f5"
+  mutedForeground: "#6b6b6b"
+  accent: "#eeeeee"
+  accentForeground: "#171717"
+  destructive: "#dc2626"
+  destructiveForeground: "#ffffff"
+  success: "#16a34a"
+  warning: "#d97706"
+  border: "#e5e5e5"
+  input: "#f5f5f5"
+  ring: "#a3a3a3"
+
+customCSS: |
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #bdbdbd; }
