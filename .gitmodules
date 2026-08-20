@@ -1,3 +1,3 @@
 [submodule "bots-ui"]
 	path = bots-ui
-	url = git@github.com:zaindroid/zbots.git
+	url = https://github.com/zaindroid/zbots.git
