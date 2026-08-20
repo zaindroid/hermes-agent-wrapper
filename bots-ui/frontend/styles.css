@@ -509,7 +509,9 @@ input:focus, textarea:focus, select:focus {
 
 #chat-header-info { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
 #chat-header-text { min-width: 0; }
+#chat-header-title-row { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
 #chat-header-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#chat-header-model { flex-shrink: 0; font-family: ui-monospace, monospace; }
 #chat-header-desc { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 #chat-header-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }

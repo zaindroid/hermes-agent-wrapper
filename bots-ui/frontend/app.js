@@ -561,8 +561,12 @@ function renderChatHeader(entry) {
   avatarSlot.innerHTML = "";
   avatarSlot.appendChild(avatarNode(entry.name, entry.avatar));
   document.getElementById("chat-header-title").textContent = entry.title;
+  const modelEl = document.getElementById("chat-header-model");
+  modelEl.textContent = entry.model || "";
+  modelEl.style.display = entry.model ? "" : "none";
+  modelEl.title = entry.provider ? `Provider: ${entry.provider}` : "";
   document.getElementById("chat-header-desc").textContent = entry.description || entry.name;
-  document.getElementById("composer-input").placeholder = `Message ${entry.title}…`;
+  document.getElementById("composer-input").placeholder = `Message ${entry.title}`;
 }
 
 async function selectBot(name) {
@@ -782,8 +786,9 @@ async function selectGroup(id) {
   document.getElementById("chat-header-avatar").innerHTML =
     `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#111"/><circle cx="38" cy="42" r="22" fill="#f2f2f2"/><circle cx="66" cy="55" r="18" fill="#9a9a9a"/></svg>`;
   document.getElementById("chat-header-title").textContent = group ? group.name : "Group";
+  document.getElementById("chat-header-model").style.display = "none";
   document.getElementById("chat-header-desc").textContent = group ? group.members.join(", ") : "";
-  document.getElementById("composer-input").placeholder = "Message the group… (@name to address one bot)";
+  document.getElementById("composer-input").placeholder = "Message the group (@name to address one bot)";
   showChatView();
   renderRoster();
   await loadMessages();
