@@ -71,7 +71,7 @@ _state_lock = asyncio.Lock()
 # --------------------------------------------------------------------------
 
 def _default_state() -> dict[str, Any]:
-    return {"hidden": [], "avatars": {}, "groups": {}, "titles": {}}
+    return {"hidden": [], "avatars": {}, "groups": {}, "titles": {}, "active_sessions": {}}
 
 
 def _read_state() -> dict[str, Any]:
@@ -87,6 +87,7 @@ def _read_state() -> dict[str, Any]:
     data.setdefault("avatars", {})
     data.setdefault("groups", {})
     data.setdefault("titles", {})
+    data.setdefault("active_sessions", {})
     return data
 
 
@@ -194,29 +195,67 @@ def _bot_base(profile: str) -> str:
     return f"{API_SERVER_BASE}/p/{profile}"
 
 
-def _bot_chat_title(profile: str) -> str:
-    return f"[Bots UI] {profile}"
+_BOT_SESSION_PREFIX = "[Bots UI]"
+
+
+def _bot_chat_title(profile: str, n: int = 1) -> str:
+    base = f"{_BOT_SESSION_PREFIX} {profile}"
+    return base if n <= 1 else f"{base} #{n}"
+
+
+_BOT_SESSION_SUFFIX_RE = re.compile(r"^\[Bots UI\] ([a-zA-Z0-9_-]+)(?: #(\d+))?$")
+
+
+def _bot_session_rollover_n(title: str, profile: str) -> Optional[int]:
+    """If title belongs to this bot's session family, its rollover number (1 if bare)."""
+    m = _BOT_SESSION_SUFFIX_RE.match((title or "").strip())
+    if not m or m.group(1) != profile:
+        return None
+    return int(m.group(2)) if m.group(2) else 1
 
 
 def _api_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {API_SERVER_KEY}", "Content-Type": "application/json"}
 
 
-async def _find_bot_chat_session(client: httpx.AsyncClient, base: str, profile: str) -> Optional[dict]:
+async def _list_bot_sessions(client: httpx.AsyncClient, base: str, profile: str) -> list[dict]:
+    """Every session that has ever belonged to this bot (all rollovers), oldest first.
+
+    Sessions created through the /p/<profile>/ multiplex mirror share one
+    physical session store with no persisted profile identity (see
+    _bot_base's docstring) -- title is the only thing that reliably scopes
+    a session to a bot, so this is a title-prefix scan, not a real query.
+    """
     r = await client.get(f"{base}/api/sessions", params={"limit": 200}, headers=_api_headers())
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=r.text[:500])
-    title = _bot_chat_title(profile)
+    rows = []
     for row in r.json().get("data") or []:
-        if isinstance(row, dict) and (row.get("title") or "").strip() == title:
-            return row
-    return None
+        if isinstance(row, dict) and _bot_session_rollover_n(row.get("title"), profile) is not None:
+            rows.append(row)
+    rows.sort(key=lambda row: row.get("started_at") or 0)
+    return rows
 
 
-async def _ensure_bot_chat_session(client: httpx.AsyncClient, base: str, profile: str) -> str:
-    existing = await _find_bot_chat_session(client, base, profile)
-    if existing:
-        return str(existing["id"])
+async def _ensure_bot_chat_session(client: httpx.AsyncClient, base: str, profile: str) -> tuple[str, list[dict]]:
+    """Return (this bot's current/active session id, all of its sessions).
+
+    Prefers the session id already recorded as active in local state (set
+    the last time a rollover happened) over a fresh title search, so a
+    rollover doesn't get silently "found" and reused again next call --
+    only used to bootstrap the very first session, or to recover if state
+    was lost.
+    """
+    state = _read_state()
+    active_id = (state.get("active_sessions") or {}).get(profile)
+    all_sessions = await _list_bot_sessions(client, base, profile)
+    if active_id and any(s.get("id") == active_id for s in all_sessions):
+        return active_id, all_sessions
+    if all_sessions:
+        session_id = str(all_sessions[-1]["id"])
+        await _mutate_state(lambda d: d.setdefault("active_sessions", {}).__setitem__(profile, session_id))
+        return session_id, all_sessions
+
     r = await client.post(
         f"{base}/api/sessions",
         json={"title": _bot_chat_title(profile), "source": "bots_ui"},
@@ -229,40 +268,71 @@ async def _ensure_bot_chat_session(client: httpx.AsyncClient, base: str, profile
     session_id = str(session.get("id") or session.get("session_id") or "")
     if not session_id:
         raise HTTPException(status_code=502, detail="api_server did not return a session id")
+    await _mutate_state(lambda d: d.setdefault("active_sessions", {}).__setitem__(profile, session_id))
+    return session_id, [session]
+
+
+async def _roll_over_bot_session(client: httpx.AsyncClient, base: str, profile: str, all_sessions: list[dict]) -> str:
+    """Start a fresh session for this bot after its current one wedges.
+
+    The old session is NOT deleted -- its history stays real and readable
+    (get_bot_messages merges every rollover's messages back together), so
+    a server-side bug that wedges a session no longer means losing the
+    conversation, just starting a new physical session under the hood.
+    """
+    next_n = 1 + max((_bot_session_rollover_n(s.get("title"), profile) or 0) for s in all_sessions)
+    r = await client.post(
+        f"{base}/api/sessions",
+        json={"title": _bot_chat_title(profile, next_n), "source": "bots_ui"},
+        headers=_api_headers(),
+    )
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text[:500])
+    payload = r.json()
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session_id = str(session.get("id") or session.get("session_id") or "")
+    if not session_id:
+        raise HTTPException(status_code=502, detail="api_server did not return a session id")
+    await _mutate_state(lambda d: d.setdefault("active_sessions", {}).__setitem__(profile, session_id))
     return session_id
 
 
 async def send_to_bot(profile: str, message: str, *, timeout: float = 300.0) -> str:
-    """Send one message to a bot's own canonical session; return the reply text.
+    """Send one message to a bot's active session; return the reply text.
 
     Real, recurring bug found live (not a one-off): a session that answers
     correctly on its first turn can start 500ing on every turn after --
     confirmed root cause via the server's own traceback (agent.log), even
     though the api_server's error response itself is just a generic "Server
-    got itself in trouble" plain-text page with no detail to match on:
-    agent_init.py's runtime-lock confirmation path
-    (api_server.py's _persist_session_runtime_lock / "confirmed_runtime_lock"
-    mechanism) resolves to a bogus "custom/main" route on some later turn of
-    a session reached through the /p/<profile>/ multiplex mirror, instead of
-    the provider actually configured -- raising "RuntimeError: No LLM
-    provider configured" server-side. This lives inside Hermes' own closed
-    agent_init.py, not something fixable from here. Self-healing instead:
-    on ANY 500 from this endpoint, delete the wedged session (losing its
-    history) and retry once against a brand-new one, rather than surfacing
-    a dead bot to the user every time. Bounded to one retry, so a
-    genuinely different failure still surfaces instead of looping.
+    got itself in trouble" plain-text page with no detail to match on.
+    Real root cause (traced through agent_init.py/api_server.py source,
+    live-tested against half a dozen workarounds -- explicit provider/model
+    in the body, a Hermes-native provider entry, the virtual "hermes-agent"
+    model alias, session forking -- none of which avoided it): once a
+    session's `model` field gets persisted as a real provider model string
+    (which happens automatically after its first turn), the NEXT turn's
+    resolver re-reads that stored string and tries to resolve it as a route
+    alias instead of a raw model id, fails, and falls through to an
+    unconfigured "custom/main" placeholder. This is inside Hermes' own
+    closed agent_init.py/api_server.py, not fixable from here, and appears
+    to affect every session after its first turn, multiplexed or not.
+
+    Self-healing instead: on any 500, roll over to a brand-new session
+    (kept, not deleted, so its own history is still real) and retry once.
+    get_bot_messages() merges every rollover back into one continuous
+    thread, so this is invisible to the user beyond the reply arriving
+    from a "new" session under the hood.
     """
     base = _bot_base(profile)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        session_id = await _ensure_bot_chat_session(client, base, profile)
+        session_id, all_sessions = await _ensure_bot_chat_session(client, base, profile)
         r = await client.post(
             f"{base}/api/sessions/{session_id}/chat",
             json={"message": message},
             headers=_api_headers(),
         )
         if r.status_code == 500:
-            await client.delete(f"{base}/api/sessions/{session_id}", headers=_api_headers())
-            session_id = await _ensure_bot_chat_session(client, base, profile)
+            session_id = await _roll_over_bot_session(client, base, profile, all_sessions)
             r = await client.post(
                 f"{base}/api/sessions/{session_id}/chat",
                 json={"message": message},
@@ -276,20 +346,22 @@ async def send_to_bot(profile: str, message: str, *, timeout: float = 300.0) -> 
 
 
 async def get_bot_activity(profile: str) -> dict:
-    """This bot's own canonical-session summary for the roster (preview/
-    timestamp/active) -- looked up by its unique title (see _bot_chat_title),
-    NOT "most recent session on this multiplex base", since that base is
-    shared across every bot on this gateway (see _bot_base's docstring) and
-    would otherwise surface a completely unrelated bot's/human's activity.
+    """This bot's own most-recent session summary for the roster (preview/
+    timestamp/active) -- across its whole session family (see
+    _list_bot_sessions), NOT "most recent session on this multiplex base",
+    since that base is shared across every bot on this gateway (see
+    _bot_base's docstring) and would otherwise surface a completely
+    unrelated bot's/human's activity.
     """
     base = _bot_base(profile)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            session = await _find_bot_chat_session(client, base, profile)
+            sessions = await _list_bot_sessions(client, base, profile)
     except HTTPException:
         return {}
-    if session is None:
+    if not sessions:
         return {}
+    session = sessions[-1]
     last_active = session.get("last_active") or session.get("started_at")
     is_active = session.get("ended_at") is None and last_active is not None and (time.time() - last_active) < 300
     return {
@@ -300,20 +372,32 @@ async def get_bot_activity(profile: str) -> dict:
 
 
 async def get_bot_messages(profile: str, limit: int = 200) -> list[dict]:
+    """Every message across this bot's whole session family, oldest first.
+
+    Not just its current active session: a server-side bug (see
+    send_to_bot's docstring) can force a mid-conversation rollover to a new
+    physical session, and the point of tracking the whole family is exactly
+    so that rollover doesn't make earlier messages disappear from the
+    user's view.
+    """
     base = _bot_base(profile)
     async with httpx.AsyncClient(timeout=30) as client:
-        session = await _find_bot_chat_session(client, base, profile)
-        if session is None:
+        sessions = await _list_bot_sessions(client, base, profile)
+        if not sessions:
             return []
-        r = await client.get(
-            f"{base}/api/sessions/{session['id']}/messages",
-            params={"limit": limit},
-            headers=_api_headers(),
-        )
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail=r.text[:500])
-        payload = r.json()
-        return payload.get("data") or payload.get("messages") or []
+        all_messages: list[dict] = []
+        for session in sessions:
+            r = await client.get(
+                f"{base}/api/sessions/{session['id']}/messages",
+                params={"limit": limit},
+                headers=_api_headers(),
+            )
+            if r.status_code >= 400:
+                continue
+            payload = r.json()
+            all_messages.extend(payload.get("data") or payload.get("messages") or [])
+        all_messages.sort(key=lambda m: m.get("timestamp") or 0)
+        return all_messages[-limit:]
 
 
 # --------------------------------------------------------------------------
@@ -494,6 +578,7 @@ async def delete_bot(name: str) -> dict:
             d["hidden"].remove(name)
         d["avatars"].pop(name, None)
         d["titles"].pop(name, None)
+        d["active_sessions"].pop(name, None)
 
     await _mutate_state(_cleanup)
     return {"ok": True}
