@@ -708,6 +708,112 @@ async def resume_routine(job_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Providers & models
+# --------------------------------------------------------------------------
+
+def _clean_model_names(provider_cfg: dict) -> list[str]:
+    """Extract plain model-name strings from a providers.<id> config entry.
+
+    Handles both shapes seen in the wild: a bare string list, and this
+    deployment's actual shape, a list of {name: "..."} dicts.
+    """
+    out = []
+    for model in provider_cfg.get("models") or []:
+        name = model.get("name") if isinstance(model, dict) else model
+        if name:
+            out.append(str(name))
+    return out
+
+
+@app.get("/providers")
+async def list_providers() -> dict:
+    """Configured providers + their models, models catalog merged from two
+    real endpoints because neither is complete/correct alone:
+      - /api/providers/custom-endpoints gives id/is_current/has_api_key, but
+        its own "model"/"models" fields come back as a stringified Python
+        dict repr for any provider whose models are the {name: "..."} dict
+        shape (confirmed live: "model": "{'name': 'qwen3-agent:latest'}") --
+        a real bug in that endpoint, not something to paper over client-side.
+      - /api/config's providers.<id>.models is the accurate source for
+        actual model names (same parsing this app's own /models endpoint
+        already does correctly).
+    """
+    endpoints_resp, cfg = await asyncio.gather(
+        dash_get("/api/providers/custom-endpoints"),
+        dash_get("/api/config"),
+    )
+    clean_models = {pid: _clean_model_names(pcfg) for pid, pcfg in (cfg.get("providers") or {}).items()}
+    providers = []
+    for ep in endpoints_resp.get("endpoints") or []:
+        pid = ep.get("id")
+        providers.append({
+            "id": pid,
+            "name": ep.get("name") or pid,
+            "base_url": ep.get("base_url") or "",
+            "models": clean_models.get(pid) or [m for m in ep.get("models") or [] if not m.startswith("{")],
+            "context_length": ep.get("context_length"),
+            "has_api_key": bool(ep.get("has_api_key")),
+            "is_current": bool(ep.get("is_current")),
+        })
+    return {"providers": providers, "current": endpoints_resp.get("current") or {}}
+
+
+class ProviderSave(BaseModel):
+    id: str = ""
+    name: str
+    base_url: str
+    model: str
+    api_key: Optional[str] = None
+    models: Optional[list[str]] = None
+    context_length: Optional[int] = None
+    discover_models: bool = True
+    make_default: bool = False
+
+
+@app.post("/providers")
+async def save_provider(body: ProviderSave) -> dict:
+    return await dash_send("POST", "/api/providers/custom-endpoints", body.model_dump())
+
+
+@app.post("/providers/{provider_id}/activate")
+async def activate_provider(provider_id: str) -> dict:
+    return await dash_send("POST", f"/api/providers/custom-endpoints/{provider_id}/activate", None)
+
+
+class ModelActivate(BaseModel):
+    provider: str
+    model: str
+
+
+@app.post("/models/activate")
+async def activate_model(body: ModelActivate) -> dict:
+    """Set one specific model (not necessarily a provider's own default) as
+    the active main-slot model -- distinct from /providers/{id}/activate,
+    which always uses whatever model the provider entry itself points at.
+    """
+    return await dash_send("POST", "/api/model/set", {"scope": "main", "provider": body.provider, "model": body.model, "task": ""})
+
+
+@app.delete("/providers/{provider_id}")
+async def delete_provider(provider_id: str) -> dict:
+    return await dash_send("DELETE", f"/api/providers/custom-endpoints/{provider_id}", None)
+
+
+class ProviderValidate(BaseModel):
+    name: str = "test"
+    base_url: str
+    model: str = ""
+    api_key: Optional[str] = None
+
+
+@app.post("/providers/validate")
+async def validate_provider(body: ProviderValidate) -> dict:
+    payload = body.model_dump()
+    payload["id"] = ""
+    return await dash_send("POST", "/api/providers/custom-endpoints/validate", payload)
+
+
+# --------------------------------------------------------------------------
 # Misc
 # --------------------------------------------------------------------------
 
@@ -720,10 +826,8 @@ async def list_models() -> dict:
     providers = cfg.get("providers") or {}
     out = []
     for provider_name, provider_cfg in providers.items():
-        for model in provider_cfg.get("models") or []:
-            model_name = model.get("name") if isinstance(model, dict) else model
-            if model_name:
-                out.append({"provider": provider_name, "model": model_name})
+        for model_name in _clean_model_names(provider_cfg):
+            out.append({"provider": provider_name, "model": model_name})
     return {"models": out}
 
 

@@ -875,11 +875,32 @@ document.getElementById("show-hidden-btn").addEventListener("click", () => {
   });
 });
 
+document.getElementById("chat-menu-btn").addEventListener("click", (e) => {
+  if (!selected || selected.kind !== "bot") return;
+  const entry = roster.find((r) => r.name === selected.id);
+  if (!entry) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  openBotContextMenu(rect.right - 170, rect.bottom + 6, entry);
+});
+
+function populateIcons() {
+  document.getElementById("show-hidden-btn").innerHTML = icon("eye", 16);
+  document.getElementById("groups-btn").innerHTML = icon("group", 16);
+  document.getElementById("new-bot-btn").innerHTML = icon("plus", 15) + "<span>New</span>";
+  document.getElementById("routines-toggle-btn").innerHTML = icon("clock", 16);
+  document.getElementById("chat-menu-btn").innerHTML = icon("more", 16);
+  document.getElementById("routines-close-btn").innerHTML = icon("close", 15);
+  document.getElementById("send-btn").innerHTML = icon("send", 15) + "<span>Send</span>";
+  document.getElementById("main-empty-icon").innerHTML = icon("bots", 34);
+}
+
 // ---------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------
 
 async function boot() {
+  renderShell("bots");
+  populateIcons();
   await refreshGroups();
   await refreshRoster();
   clearInterval(rosterPollTimer);
