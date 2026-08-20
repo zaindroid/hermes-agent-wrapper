@@ -567,6 +567,7 @@ function renderChatHeader(entry) {
 
 async function selectBot(name) {
   selected = { kind: "bot", id: name };
+  document.body.classList.add("chat-open");
   document.getElementById("routines-pane").classList.remove("open");
   const entry = roster.find((r) => r.name === name);
   if (entry) renderChatHeader(entry);
@@ -575,6 +576,13 @@ async function selectBot(name) {
   await loadMessages();
   clearInterval(messagesPollTimer);
   messagesPollTimer = setInterval(loadMessages, 5000);
+}
+
+function backToRoster() {
+  selected = null;
+  document.body.classList.remove("chat-open");
+  clearInterval(messagesPollTimer);
+  renderRoster();
 }
 
 function renderMessages(rows, kind) {
@@ -768,6 +776,7 @@ async function refreshGroups() {
 
 async function selectGroup(id) {
   selected = { kind: "group", id };
+  document.body.classList.add("chat-open");
   document.getElementById("routines-pane").classList.remove("open");
   const group = groups.find((g) => g.id === id);
   document.getElementById("chat-header-avatar").innerHTML =
@@ -875,6 +884,8 @@ document.getElementById("show-hidden-btn").addEventListener("click", () => {
   });
 });
 
+document.getElementById("chat-back-btn").addEventListener("click", backToRoster);
+
 document.getElementById("chat-menu-btn").addEventListener("click", (e) => {
   if (!selected || selected.kind !== "bot") return;
   const entry = roster.find((r) => r.name === selected.id);
@@ -884,6 +895,7 @@ document.getElementById("chat-menu-btn").addEventListener("click", (e) => {
 });
 
 function populateIcons() {
+  document.getElementById("chat-back-btn").innerHTML = icon("back", 16);
   document.getElementById("show-hidden-btn").innerHTML = icon("eye", 16);
   document.getElementById("groups-btn").innerHTML = icon("group", 16);
   document.getElementById("new-bot-btn").innerHTML = icon("plus", 15) + "<span>New</span>";

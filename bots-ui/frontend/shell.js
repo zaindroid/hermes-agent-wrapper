@@ -44,6 +44,7 @@ function renderShell(activeId) {
   brand.innerHTML = `${icon("system", 20)}<span>Hermes</span>`;
   nav.appendChild(brand);
 
+  let activeLabel = "Hermes";
   NAV_GROUPS.forEach((group) => {
     const label = document.createElement("div");
     label.className = "shell-nav-group-label";
@@ -56,6 +57,32 @@ function renderShell(activeId) {
       a.href = item.href;
       a.innerHTML = `${icon(item.icon, 17)}<span>${item.label}</span>`;
       nav.appendChild(a);
+      if (item.id === activeId) activeLabel = item.label;
     });
   });
+
+  // Mobile-only top bar (hidden on desktop by CSS) that toggles the nav
+  // rail as a slide-in drawer, since there's no room for a 210px rail
+  // alongside real content on a phone screen.
+  const page = document.getElementById("shell-page");
+  const topbar = document.createElement("div");
+  topbar.id = "shell-mobile-topbar";
+  topbar.innerHTML = `<button id="shell-nav-toggle" class="icon-btn" title="Menu"></button><span id="shell-mobile-title"></span>`;
+  page.insertBefore(topbar, page.firstChild);
+  document.getElementById("shell-nav-toggle").innerHTML = icon("menu", 18);
+  document.getElementById("shell-mobile-title").textContent = activeLabel;
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "shell-nav-backdrop";
+  document.body.appendChild(backdrop);
+
+  function closeNav() {
+    nav.classList.remove("open");
+    backdrop.classList.remove("open");
+  }
+  document.getElementById("shell-nav-toggle").addEventListener("click", () => {
+    nav.classList.toggle("open");
+    backdrop.classList.toggle("open");
+  });
+  backdrop.addEventListener("click", closeNav);
 }

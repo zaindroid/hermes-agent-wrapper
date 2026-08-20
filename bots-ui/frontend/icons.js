@@ -37,6 +37,8 @@ const ICONS = {
   pause: '<path d="M7 4h4v16H7zM13 4h4v16h-4z"/>',
   check: '<path d="M4 12l6 6L20 6"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  back: '<path d="M15 5 8 12l7 7"/>',
 };
 
 function icon(name, size) {
