@@ -233,7 +233,25 @@ async def _ensure_bot_chat_session(client: httpx.AsyncClient, base: str, profile
 
 
 async def send_to_bot(profile: str, message: str, *, timeout: float = 300.0) -> str:
-    """Send one message to a bot's own canonical session; return the reply text."""
+    """Send one message to a bot's own canonical session; return the reply text.
+
+    Real, recurring bug found live (not a one-off): a session that answers
+    correctly on its first turn can start 500ing on every turn after --
+    confirmed root cause via the server's own traceback (agent.log), even
+    though the api_server's error response itself is just a generic "Server
+    got itself in trouble" plain-text page with no detail to match on:
+    agent_init.py's runtime-lock confirmation path
+    (api_server.py's _persist_session_runtime_lock / "confirmed_runtime_lock"
+    mechanism) resolves to a bogus "custom/main" route on some later turn of
+    a session reached through the /p/<profile>/ multiplex mirror, instead of
+    the provider actually configured -- raising "RuntimeError: No LLM
+    provider configured" server-side. This lives inside Hermes' own closed
+    agent_init.py, not something fixable from here. Self-healing instead:
+    on ANY 500 from this endpoint, delete the wedged session (losing its
+    history) and retry once against a brand-new one, rather than surfacing
+    a dead bot to the user every time. Bounded to one retry, so a
+    genuinely different failure still surfaces instead of looping.
+    """
     base = _bot_base(profile)
     async with httpx.AsyncClient(timeout=timeout) as client:
         session_id = await _ensure_bot_chat_session(client, base, profile)
@@ -242,6 +260,14 @@ async def send_to_bot(profile: str, message: str, *, timeout: float = 300.0) -> 
             json={"message": message},
             headers=_api_headers(),
         )
+        if r.status_code == 500:
+            await client.delete(f"{base}/api/sessions/{session_id}", headers=_api_headers())
+            session_id = await _ensure_bot_chat_session(client, base, profile)
+            r = await client.post(
+                f"{base}/api/sessions/{session_id}/chat",
+                json={"message": message},
+                headers=_api_headers(),
+            )
         if r.status_code >= 400:
             raise HTTPException(status_code=r.status_code, detail=r.text[:500])
         result = r.json()
