@@ -838,6 +838,282 @@ async def list_peers() -> dict:
     return {"peers": [{"name": k, **(v if isinstance(v, dict) else {})} for k, v in peers.items()]}
 
 
+# --------------------------------------------------------------------------
+# Sessions -- thin proxy over the real dashboard sessions API
+# --------------------------------------------------------------------------
+
+@app.get("/sessions")
+async def list_sessions(limit: int = 50, offset: int = 0) -> Any:
+    return await dash_get("/api/profiles/sessions", limit=limit, offset=offset, min_messages=0, archived="exclude")
+
+
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: str, profile: str = "default") -> dict:
+    """The dashboard (port 9119) has no session-delete route at all --
+    confirmed live, grepped the whole web_server.py/web_routers tree.
+    Session deletion only exists on the api_server (port 8642, Bearer
+    auth), the same one bot chat already uses.
+    """
+    base = _bot_base(profile)
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.delete(f"{base}/api/sessions/{session_id}", headers=_api_headers())
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text[:500])
+    return r.json() if r.content else {}
+
+
+# --------------------------------------------------------------------------
+# MCP servers
+# --------------------------------------------------------------------------
+
+@app.get("/mcp/servers")
+async def list_mcp_servers() -> Any:
+    return await dash_get("/api/mcp/servers")
+
+
+class McpServerCreate(BaseModel):
+    name: str
+    url: Optional[str] = None
+    command: Optional[str] = None
+    args: list[str] = []
+    env: dict[str, str] = {}
+    auth: Optional[str] = None
+    bearer_token: Optional[str] = None
+
+
+@app.post("/mcp/servers")
+async def create_mcp_server(body: McpServerCreate) -> dict:
+    return await dash_send("POST", "/api/mcp/servers", body.model_dump())
+
+
+@app.delete("/mcp/servers/{name}")
+async def delete_mcp_server(name: str) -> dict:
+    return await dash_send("DELETE", f"/api/mcp/servers/{name}", None)
+
+
+@app.post("/mcp/servers/{name}/test")
+async def test_mcp_server(name: str) -> dict:
+    return await dash_send("POST", f"/api/mcp/servers/{name}/test", None)
+
+
+class ToggleBody(BaseModel):
+    enabled: bool
+
+
+@app.put("/mcp/servers/{name}/enabled")
+async def set_mcp_server_enabled(name: str, body: ToggleBody) -> dict:
+    return await dash_send("PUT", f"/api/mcp/servers/{name}/enabled", body.model_dump())
+
+
+# --------------------------------------------------------------------------
+# Skills
+# --------------------------------------------------------------------------
+
+@app.get("/skills")
+async def list_skills() -> Any:
+    return await dash_get("/api/skills")
+
+
+class SkillToggleBody(BaseModel):
+    name: str
+    enabled: bool
+
+
+@app.put("/skills/toggle")
+async def toggle_skill(body: SkillToggleBody) -> dict:
+    return await dash_send("PUT", "/api/skills/toggle", body.model_dump())
+
+
+# --------------------------------------------------------------------------
+# Environment variables
+# --------------------------------------------------------------------------
+
+@app.get("/env")
+async def list_env() -> Any:
+    return await dash_get("/api/env")
+
+
+class EnvSet(BaseModel):
+    key: str
+    value: str
+
+
+@app.put("/env")
+async def set_env(body: EnvSet) -> dict:
+    return await dash_send("PUT", "/api/env", body.model_dump())
+
+
+@app.delete("/env/{key}")
+async def delete_env(key: str) -> dict:
+    return await dash_send("DELETE", "/api/env", {"key": key})
+
+
+# --------------------------------------------------------------------------
+# Cron -- general view (all jobs, every profile), distinct from the
+# bot-scoped /bots/{name}/routines above.
+# --------------------------------------------------------------------------
+
+@app.get("/cron")
+async def list_all_cron_jobs() -> Any:
+    jobs = await dash_get("/api/cron/jobs", profile="all")
+    return jobs if isinstance(jobs, list) else jobs.get("data", [])
+
+
+class CronCreate(BaseModel):
+    name: str = ""
+    prompt: str
+    schedule: str
+    deliver: str = "local"
+
+
+@app.post("/cron")
+async def create_cron_job(body: CronCreate) -> dict:
+    return await dash_send("POST", "/api/cron/jobs", body.model_dump())
+
+
+@app.delete("/cron/{job_id}")
+async def delete_cron_job(job_id: str) -> dict:
+    return await dash_send("DELETE", f"/api/cron/jobs/{job_id}", None)
+
+
+@app.post("/cron/{job_id}/pause")
+async def pause_cron_job(job_id: str) -> dict:
+    return await dash_send("POST", f"/api/cron/jobs/{job_id}/pause", None)
+
+
+@app.post("/cron/{job_id}/resume")
+async def resume_cron_job(job_id: str) -> dict:
+    return await dash_send("POST", f"/api/cron/jobs/{job_id}/resume", None)
+
+
+@app.post("/cron/{job_id}/run")
+async def run_cron_job(job_id: str) -> dict:
+    return await dash_send("POST", f"/api/cron/jobs/{job_id}/trigger", None)
+
+
+# --------------------------------------------------------------------------
+# Plugins (read-only for now)
+# --------------------------------------------------------------------------
+
+@app.get("/plugins")
+async def list_plugins() -> Any:
+    return await dash_get("/api/dashboard/plugins")
+
+
+# --------------------------------------------------------------------------
+# Webhooks
+# --------------------------------------------------------------------------
+
+@app.get("/webhooks")
+async def list_webhooks() -> Any:
+    return await dash_get("/api/webhooks")
+
+
+@app.post("/webhooks/enable")
+async def enable_webhooks() -> dict:
+    return await dash_send("POST", "/api/webhooks/enable", None)
+
+
+class WebhookCreateBody(BaseModel):
+    name: str
+    description: Optional[str] = None
+    events: list[str] = []
+    prompt: Optional[str] = None
+    deliver: str = "log"
+
+
+@app.post("/webhooks")
+async def create_webhook(body: WebhookCreateBody) -> dict:
+    return await dash_send("POST", "/api/webhooks", body.model_dump())
+
+
+@app.delete("/webhooks/{name}")
+async def delete_webhook(name: str) -> dict:
+    return await dash_send("DELETE", f"/api/webhooks/{name}", None)
+
+
+@app.put("/webhooks/{name}/enabled")
+async def set_webhook_enabled(name: str, body: ToggleBody) -> dict:
+    return await dash_send("PUT", f"/api/webhooks/{name}/enabled", body.model_dump())
+
+
+# --------------------------------------------------------------------------
+# Files (scoped to the default profile's workspace)
+# --------------------------------------------------------------------------
+
+@app.get("/files")
+async def list_files(path: str = "") -> Any:
+    return await dash_get("/api/files", **({"path": path} if path else {}))
+
+
+@app.get("/files/read")
+async def read_file(path: str) -> Any:
+    return await dash_get("/api/files/read", path=path)
+
+
+class MkdirBody(BaseModel):
+    path: str
+
+
+@app.post("/files/mkdir")
+async def mkdir(body: MkdirBody) -> dict:
+    return await dash_send("POST", "/api/files/mkdir", body.model_dump())
+
+
+class FileDelete(BaseModel):
+    path: str
+    recursive: bool = False
+
+
+@app.delete("/files")
+async def delete_file(body: FileDelete) -> dict:
+    return await dash_send("DELETE", "/api/files", body.model_dump())
+
+
+# --------------------------------------------------------------------------
+# Logs
+# --------------------------------------------------------------------------
+
+@app.get("/logs")
+async def get_logs(lines: int = 200) -> Any:
+    return await dash_get("/api/logs", lines=lines)
+
+
+# --------------------------------------------------------------------------
+# System
+# --------------------------------------------------------------------------
+
+@app.get("/system")
+async def system_status() -> dict:
+    status, stats = await asyncio.gather(dash_get("/api/status"), dash_get("/api/system/stats"))
+    return {"status": status, "stats": stats}
+
+
+@app.post("/system/restart-gateway")
+async def restart_gateway() -> dict:
+    return await dash_send("POST", "/api/gateway/restart", None)
+
+
+# --------------------------------------------------------------------------
+# Config -- raw YAML editor (the safe, always-correct fallback: every
+# structured setting also lives in this same file, so a raw editor never
+# lags behind whatever new keys a Hermes update introduces).
+# --------------------------------------------------------------------------
+
+@app.get("/config/raw")
+async def get_config_raw() -> Any:
+    return await dash_get("/api/config/raw")
+
+
+class ConfigRawBody(BaseModel):
+    yaml_text: str
+
+
+@app.put("/config/raw")
+async def put_config_raw(body: ConfigRawBody) -> dict:
+    return await dash_send("PUT", "/api/config/raw", body.model_dump())
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True}
